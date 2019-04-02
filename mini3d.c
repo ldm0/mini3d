@@ -8,10 +8,10 @@
 //
 // history:
 //   2007.7.01  skywind  create this file as a tutorial
-//   2007.7.02  skywind  implementate texture and color render
+//   2007.7.02  skywind  implement texture and color render
 //   2008.3.15  skywind  fixed a trapezoid issue
 //   2015.8.09  skywind  rewrite with more comment
-//   2015.8.12  skywind  adjust interfaces for clearity 
+//   2015.8.12  skywind  adjust interfaces for clearness
 // 
 //=====================================================================
 #include <stdio.h>
@@ -31,7 +31,7 @@ typedef struct { float m[4][4]; } matrix_t;
 typedef struct { float x, y, z, w; } vector_t;
 typedef vector_t point_t;
 
-int CMID(int x, int min, int max) { return (x < min) ? min : ((x > max) ? max : x); }
+int clamp(int x, int min, int max) { return (x < min) ? min : ((x > max) ? max : x); }
 
 // 计算插值：t 为 [0, 1] 之间的数值
 float interp(float x1, float x2, float t) { return x1 + (x2 - x1) * t; }
@@ -483,8 +483,8 @@ typedef struct {
 	transform_t transform;      // 坐标变换器
 	int width;                  // 窗口宽度
 	int height;                 // 窗口高度
-	IUINT32 **framebuffer;      // 像素缓存：framebuffer[y] 代表第 y行
-	float **zbuffer;            // 深度缓存：zbuffer[y] 为第 y行指针
+	IUINT32 **framebuffer;      // 像素缓存：framebuffer[y] 代表第y行
+	float **zbuffer;            // 深度缓存：zbuffer[y] 为第y行指针
 	IUINT32 **texture;          // 纹理：同样是每行索引
 	int tex_width;              // 纹理宽度
 	int tex_height;             // 纹理高度
@@ -559,14 +559,16 @@ void device_set_texture(device_t *device, void *bits, long pitch, int w, int h)
 	device->max_v = (float)(h - 1);
 }
 
-// 清空 framebuffer 和 zbuffer
+// 清空 framebuffer 和 zbuffer 为渐变色
 void device_clear(device_t *device, int mode)
 {
 	int y, x, height = device->height;
 	for (y = 0; y < device->height; y++) {
 		IUINT32 *dst = device->framebuffer[y];
 		IUINT32 cc = (height - 1 - y) * 230 / (height - 1);
-		cc = (cc << 16) | (cc << 8) | cc;
+		// just change the blue channel
+		cc |= 0xffff00;
+		//cc = (cc << 16) | (cc << 8) | cc;
 		if (mode == 0) cc = device->background;
 		for (x = device->width; x > 0; dst++, x--) dst[0] = cc;
 	}
@@ -637,8 +639,8 @@ IUINT32 device_texture_read(const device_t *device, float u, float v)
 	v = v * device->max_v;
 	x = (int)(u + 0.5f);
 	y = (int)(v + 0.5f);
-	x = CMID(x, 0, device->tex_width - 1);
-	y = CMID(y, 0, device->tex_height - 1);
+	x = clamp(x, 0, device->tex_width - 1);
+	y = clamp(y, 0, device->tex_height - 1);
 	return device->texture[y][x];
 }
 
@@ -669,9 +671,9 @@ void device_draw_scanline(device_t *device, scanline_t *scanline)
 					int R = (int)(r * 255.0f);
 					int G = (int)(g * 255.0f);
 					int B = (int)(b * 255.0f);
-					R = CMID(R, 0, 255);
-					G = CMID(G, 0, 255);
-					B = CMID(B, 0, 255);
+					R = clamp(R, 0, 255);
+					G = clamp(G, 0, 255);
+					B = clamp(B, 0, 255);
 					framebuffer[x] = (R << 16) | (G << 8) | (B);
 				}
 				if (render_state & RENDER_STATE_TEXTURE) {
@@ -716,8 +718,8 @@ void device_draw_primitive(device_t *device, const vertex_t *v1,
 	transform_apply(&device->transform, &c2, &v2->pos);
 	transform_apply(&device->transform, &c3, &v3->pos);
 
-	// 裁剪，注意此处可以完善为具体判断几个点在 cvv内以及同cvv相交平面的坐标比例
-	// 进行进一步精细裁剪，将一个分解为几个完全处在 cvv内的三角形
+	// 裁剪，注意此处可以完善为具体判断几个点在cvv内以及同cvv相交平面的坐标比例
+	// 进行进一步精细裁剪，将一个分解为几个完全处在cvv内的三角形
 	if (transform_check_cvv(&c1) != 0) return;
 	if (transform_check_cvv(&c2) != 0) return;
 	if (transform_check_cvv(&c3) != 0) return;
@@ -898,13 +900,13 @@ void screen_update(void)
 //=====================================================================
 vertex_t mesh[8] = {
 	{{-1, -1, 1, 1}, {0, 0}, {1.0f, 0.2f, 0.2f}, 1},
-{{1, -1, 1, 1}, {0, 1}, {0.2f, 1.0f, 0.2f}, 1},
-{{1, 1, 1, 1}, {1, 1}, {0.2f, 0.2f, 1.0f}, 1},
-{{-1, 1, 1, 1}, {1, 0}, {1.0f, 0.2f, 1.0f}, 1},
-{{-1, -1, -1, 1}, {0, 0}, {1.0f, 1.0f, 0.2f}, 1},
-{{1, -1, -1, 1}, {0, 1}, {0.2f, 1.0f, 1.0f}, 1},
-{{1, 1, -1, 1}, {1, 1}, {1.0f, 0.3f, 0.3f}, 1},
-{{-1, 1, -1, 1}, {1, 0}, {0.2f, 1.0f, 0.3f}, 1},
+	{{1, -1, 1, 1}, {0, 1}, {0.2f, 1.0f, 0.2f}, 1},
+	{{1, 1, 1, 1}, {1, 1}, {0.2f, 0.2f, 1.0f}, 1},
+	{{-1, 1, 1, 1}, {1, 0}, {1.0f, 0.2f, 1.0f}, 1},
+	{{-1, -1, -1, 1}, {0, 0}, {1.0f, 1.0f, 0.2f}, 1},
+	{{1, -1, -1, 1}, {0, 1}, {0.2f, 1.0f, 1.0f}, 1},
+	{{1, 1, -1, 1}, {1, 1}, {1.0f, 0.3f, 0.3f}, 1},
+	{{-1, 1, -1, 1}, {1, 0}, {0.2f, 1.0f, 0.3f}, 1},
 };
 
 void draw_plane(device_t *device, int a, int b, int c, int d)
@@ -919,6 +921,7 @@ void draw_plane(device_t *device, int a, int b, int c, int d)
 void draw_box(device_t *device, float theta)
 {
 	matrix_t m;
+	// (-1, -0.5, 1) is the pivot cube rotates
 	matrix_set_rotate(&m, -1, -0.5, 1, theta);
 	device->transform.world = m;
 	transform_update(&device->transform);
@@ -943,8 +946,10 @@ void init_texture(device_t *device)
 	int i, j;
 	for (j = 0; j < 256; j++) {
 		for (i = 0; i < 256; i++) {
-			int x = i / 32, y = j / 32;
-			texture[j][i] = ((x + y) & 1) ? 0xffffff : 0x3fbcef;
+			int cc = i ^ j;
+			texture[j][i] = cc << 16 | cc << 8 | cc;
+			//int x = i / 32, y = j / 32;
+			//texture[j][i] = ((x + y) & 1) ? 0xffffff : 0x3fbcef;
 		}
 	}
 	device_set_texture(device, texture, 256 * 4, 256, 256);
@@ -956,7 +961,7 @@ int main(void)
 	int states[] = {RENDER_STATE_TEXTURE, RENDER_STATE_COLOR, RENDER_STATE_WIREFRAME};
 	int indicator = 0;
 	int kbhit = 0;
-	float alpha = 1;
+	float rot = 1;
 	float pos = 3.5;
 
 	TCHAR *title = _T("Mini3d (software render tutorial) - ")
@@ -976,22 +981,22 @@ int main(void)
 		device_clear(&device, 1);
 		camera_at_zero(&device, pos, 0, 0);
 
-		if (screen_keys[VK_UP]) pos -= 0.01f;
-		if (screen_keys[VK_DOWN]) pos += 0.01f;
-		if (screen_keys[VK_LEFT]) alpha += 0.01f;
-		if (screen_keys[VK_RIGHT]) alpha -= 0.01f;
+		if (screen_keys[VK_UP]) pos -= 0.03f;
+		if (screen_keys[VK_DOWN]) pos += 0.03f;
+		if (screen_keys[VK_LEFT]) rot += 0.03f;
+		if (screen_keys[VK_RIGHT]) rot -= 0.03f;
 
 		if (screen_keys[VK_SPACE]) {
 			if (kbhit == 0) {
 				kbhit = 1;
-				if (++indicator >= 3) indicator = 0;
+				indicator = (indicator + 1) % 3;
 				device.render_state = states[indicator];
 			}
 		} else {
 			kbhit = 0;
 		}
 
-		draw_box(&device, alpha);
+		draw_box(&device, rot);
 		screen_update();
 		Sleep(1);
 	}
